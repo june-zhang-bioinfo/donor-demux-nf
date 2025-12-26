@@ -148,16 +148,12 @@ results/demuxalot/
 
 ## Building Docker Images
 
-### donor_demux container
 ```bash
-docker build -f dockerfile.donor_demux -t devjune26/donor_demux:1.0 .
-docker push devjune26/donor_demux:1.0
-```
-
-### r_eval container
-```bash
-docker build -f dockerfile.r_eval -t devjune26/r_eval:1.0 .
-docker push devjune26/r_eval:1.0
+module load apptainer
+# donor_demux container
+apptainer pull donor_demux.sif docker://devjune26/donor_demux:1.0
+# r_eval container
+apptainer pull r_eval.sif docker://devjune26/r_eval:1.0
 ```
 
 ## Troubleshooting
