@@ -18,9 +18,9 @@ params.demux_outdir = "results/demuxalot"
 
 // Conditional Demo Parameters (NEW)
 params.skip_vcf_prep = false
-params.demo_vcf_path = "/data/text_dataset.vcf" // Path to the public VCF for demo runs
-params.demo_sample_names = "113_113,349_350,352_353,39_39,40_40,41_41,42_42,43_43,465_466,596_597,597_598,632_633,633_634,660_661" // Comma-separated sample names for demo VCF
-params.demo_sexes = "Male,Male,Female,Male,Male,Female,Female,Female,Male,Female,Male,Male,Female,Female" // Comma-separated sexes for demo VCF
+params.vcf_path = "/data/text_dataset.vcf"
+params.donor_ids = "113_113,349_350,352_353,39_39,40_40,41_41,42_42,43_43,465_466,596_597,597_598,632_633,633_634,660_661" // Comma-separated sample names for demo VCF
+params.sexes = "Male,Male,Female,Female,Female,Male,Female,Female,Male,Female,Male,Male,Female,Female" // Comma-separated sexes for demo VCF
 
 // Add this just after the parameter block
 if (!params.skip_vcf_prep && !file(params.runs_csv).exists()) {
@@ -35,7 +35,7 @@ def runs_input_source =
     Channel.empty() : 
     Channel.fromPath(params.runs_csv)
 
-// Now, apply the operators to the source, which will be empty in demo mode
+// Apply the operators to the source, which will be empty in vcf skipping mode
 runs_input_source
     .splitCsv(header:true)
     .map { row -> 
@@ -45,10 +45,23 @@ runs_input_source
     .set { runs_channel }
 
 // Create channel for 10x BAMs
-Channel.fromPath("${params.tenx_dir}/*/*.bam")
+Channel.fromPath("${params.tenx_dir}/*.bam")
     .map { bam -> 
         def run_name = bam.parent.name
-        tuple(run_name, bam)
+        def barcodes = file("${bam.parent}/barcodes.tsv")
+        
+        // Discover EITHER an .h5 or an .rds file in the same directory
+        def matrix_files = files("${bam.parent}/*.{h5,rds}")
+        def matrix = matrix_files.size() > 0 ? matrix_files[0] : file("NO_MATRIX_FILE")
+        
+        if( !barcodes.exists() ) {
+            log.warn "Warning: Could not find barcodes.tsv for ${run_name}"
+        }
+        if( !matrix.exists() ) {
+            log.warn "Warning: No .h5 or .rds found for ${run_name}"
+        }
+        
+        return tuple(run_name, bam, barcodes, matrix) 
     }
     .set { tenx_bams_channel }
 
@@ -58,29 +71,28 @@ workflow {
     def final_vcf_channel
     
     if (!params.skip_vcf_prep) {
-        final_vcf_channel = SUBWF_VCF_PREP(
+        vcf_prep_out = SUBWF_VCF_PREP(
             runs_channel,
-            file(params.reference)
+            file(params.reference),
+            file('scripts/change_read_group.py')
         )
-        final_vcf_channel = final_vcf_channel.filtered_vcf
+        final_vcf_channel = vcf_prep_out.filtered_vcf
     } else {
-        final_vcf_channel = Channel.of(
-            tuple(
-                "test_run",
-                file(params.demo_vcf_path),
-                params.demo_sample_names.split(','),
-                params.demo_sexes.split(',')
+        final_vcf_channel = tenx_bams_channel.map { run_name, bam, barcodes, matrix ->
+            return tuple(
+                run_name, 
+                file(params.vcf_path), 
+                params.donor_ids.split(','),
+                params.sexes.split(',')
             )
-        )
+        }
     }
     
-    // Join the channels
     joined_channel = final_vcf_channel.join(tenx_bams_channel, by: 0)
     
-    // Pass 3 inputs: joined channel, and two script paths
     SUBWF_DEMUX_ANALYSIS(
         joined_channel,
-        file('scripts/demuxalot.py'),
+        file('scripts/run_demuxalot.py'),
         file('scripts/seurat_analysis.R')
     )
 }

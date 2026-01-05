@@ -1,25 +1,21 @@
 # Donor Demultiplexing Nextflow Pipeline
 
-A Nextflow pipeline for demultiplexing pooled single-cell RNA-seq samples using genetic variants. The pipeline identifies individual donors in multiplexed 10x Genomics experiments through variant calling and probabilistic assignment.
-This pipeline is intended for multiplexed 10x scRNA-seq experiments where donors are genetically distinct and no cell hashing (HTO) data is available.
+A Nextflow pipeline for demultiplexing pooled single-cell RNA-seq samples using genetic variants (SNPs). The pipeline identifies genetically distinct donors in multiplexed 10x Genomics experiments through variant calling and probabilistic assignment, when no cell hashing (HTO) data is available. 
+
+Genetically unrelated (or weakly related) donors and adequate SNP coverage present in both donor and pooled BAMs are required for the best performance.
 
 ## Overview
 
 This pipeline performs:
 1. **VCF Preparation** (optional): Processes donor BAM files to generate donor-specific variants
 2. **Demultiplexing**: Uses Demuxalot to assign cells to donors based on genetic variants
-3. **Quality Assessment**: Generates PCA plots and sex-specific gene expression visualizations
-
-## Assumptions
-- Donors are genetically unrelated (or weakly related)
-- Adequate SNP coverage is present in scRNA-seq BAMs
-
+3. **Results Visualization**: Generates PCA plots and sex-specific gene expression visualizations
 
 ## Pipeline Architecture
 
 ### Main Workflow (`main.nf`)
 - Orchestrates the entire pipeline
-- Supports two modes: full pipeline or demo mode with pre-existing VCF
+- Supports two modes: full pipeline or work with pre-existing VCF
 
 ***Note on demo mode***
 Donor genotyping BAMs are typically not publicly available due to privacy restrictions.
@@ -38,12 +34,25 @@ https://demultiplexing-doublet-detecting-docs.readthedocs.io/en/latest/DataPrep.
 ## Requirements
 
 ### Software Dependencies
-- **Nextflow** (≥22.0)
-- **Docker** or **Singularity**
+- **Singularity**
+- **Nextflow** (24.04.2)
 
 ### Container Images
 - `devjune26/donor_demux:1.0` - Contains samtools, bcftools, FreeBayes, and demuxalot
 - `devjune26/r_eval:1.0` - Contains R with Seurat and visualization packages
+
+## Pull Docker Images
+```bash
+mkdir containers
+cd containers
+module load singularity
+
+# donor_demux container
+singularity pull donor_demux.sif docker://devjune26/donor_demux:1.0
+
+# r_eval container
+singularity pull r_eval.sif docker://devjune26/r_eval:1.0
+```
 
 ## Input Files
 
@@ -59,50 +68,44 @@ https://demultiplexing-doublet-detecting-docs.readthedocs.io/en/latest/DataPrep.
 
 3. **10x Data Directory** (`params.tenx_dir`): Structure:
    ```
-   10x/
-   ├── run_name_1/
-   │   ├── possorted_genome_bam.bam
-   │   ├── barcodes.tsv
-   │   └── filtered_feature_bc_matrix.h5 (or .rds)
-   └── run_name_2/
-       └── ...
+   run_name_1/
+   ├── possorted_genome_bam.bam  
+   ├── possorted_genome_bam.bam.bai
+   ├── barcodes.tsv
+   └── filtered_feature_bc_matrix.h5 (or .rds)
    ```
 
-### Demo Mode
-Set `params.skip_vcf_prep = true` and provide:
-- `params.demo_vcf_path`: Path to pre-computed VCF file
-- `params.demo_sample_names`: Comma-separated donor IDs
-- `params.demo_sexes`: Comma-separated sexes (Male/Female)
+### Existing VCF Mode
+Set `skip_vcf_prep = true` and provide:
+- `vcf_path`: Path to pre-computed VCF file
+- `donor_ids`: Comma-separated donor IDs
+- `sexes`: Comma-separated sexes (Male/Female)
 
 ## Usage
 
 ### Full Pipeline (with VCF preparation)
 ```bash
+module load nextflow
+export JAVA_HOME="/apps/lib/java/jdk-20.0.2"
+export PATH="$JAVA_HOME/bin:$PATH"
+unset JAVA_CMD
+
 nextflow run main.nf \
+  -profile hpc \
   --runs_csv /data/run_info.csv \
   --reference /data/GRCh38.primary_assembly.genome.fa \
-  --tenx_dir /data/10x \
+  --tenx_dir /data/10x/run_1 \
   --demux_outdir results/demuxalot
 ```
 
 ### Demo Mode (skip VCF preparation)
 ```bash
 nextflow run main.nf \
-  --skip_vcf_prep \
-  --demo_vcf_path /data/donors.vcf \
-  --demo_sample_names "113_113,349_350,352_353" \
-  --demo_sexes "Male,Male,Female" \
-  --tenx_dir /data/10x \
-  --demux_outdir results/demuxalot
-```
-
-### Using Profiles
-```bash
-# Local execution
-nextflow run main.nf -profile local
-
-# HPC/Slurm cluster
-nextflow run main.nf -profile hpc
+    -profile hpc \
+    --skip_vcf_prep true \
+    --reference "/path/GRCh38.primary_assembly.genome.fa" \
+    --vcf_path "/path/data/test_dataset.vcf" \
+    --tenx_dir "/path/data/10x/test_run"
 ```
 
 ## Parameters
@@ -111,12 +114,12 @@ nextflow run main.nf -profile hpc
 | ------------------- | -------- | ----------------------------------------- | ---------------------------------- |
 | `runs_csv`          | Yes*     | `/data/run_info.csv`                      | CSV with participant BAM metadata  |
 | `reference`         | Yes*     | `/data/GRCh38.primary_assembly.genome.fa` | Reference genome FASTA             |
-| `tenx_dir`          | Yes      | `/data/10x`                               | Directory containing 10x BAM files |
+| `tenx_dir`          | Yes      | `/data/10x/run_name`                      | Directory containing 10x BAM files |
 | `demux_outdir`      | No       | `results/demuxalot`                       | Output directory for results       |
 | `skip_vcf_prep`     | No       | `false`                                   | Skip VCF preparation (demo mode)   |
-| `demo_vcf_path`     | Yes†     | `/data/text_dataset.vcf`                  | VCF file for demo mode             |
-| `demo_sample_names` | Yes†     | (see config)                              | Donor IDs for demo mode            |
-| `demo_sexes`        | Yes†     | (see config)                              | Donor sexes for demo mode          |
+| `vcf_path`          | Yes†    | `/data/test_dataset.vcf`                  | VCF file                           |
+| `donor_ids`.        | Yes†    | (see config)                              | Donor IDs                          |
+| `sexes`             | Yes†      (see config)                              | Donor sexes                        |
 
 * Required unless skip_vcf_prep = true
 † Required only when skip_vcf_prep = true
@@ -126,35 +129,13 @@ nextflow run main.nf -profile hpc
 ```
 results/demuxalot/
 └── [run_name]/
-    ├── [run_name]_posteriors.csv       # Cell-to-donor assignment probabilities
-    ├── [run_name]_likelihoods.csv      # Likelihood scores
-    ├── [run_name]_PCA_plots.pdf        # PCA colored by sex and assignment
-    └── [run_name]_SexGene_plots.pdf    # Sex-specific gene expression (XIST, RPS4Y1, etc.)
+    ├── filtered.vcf
+    ├── demuxalot_posteriors.csv       # Cell-to-donor assignment probabilities
+    ├── demuxalot_likelihoods.csv      # Likelihood scores
+    ├── PCA_plots.pdf        # PCA colored by sex and assignment
+    └── SexGene_plots.pdf    # Sex-specific gene expression (XIST, RPS4Y1, etc.)
 ```
 
-## Configuration Profiles
-
-### `local`
-- Single machine execution
-- 2 CPUs, 6 GB memory per process
-- 1 hour time limit
-
-### `hpc`
-- Slurm cluster execution
-- 4 CPUs, 16 GB memory (default)
-- FreeBayes: 8 CPUs, 32 GB, 12 hours
-- R analysis: 1 CPU, 16 GB
-- Automatic retry on failure (2 attempts)
-
-## Building Docker Images
-
-```bash
-module load apptainer
-# donor_demux container
-apptainer pull donor_demux.sif docker://devjune26/donor_demux:1.0
-# r_eval container
-apptainer pull r_eval.sif docker://devjune26/r_eval:1.0
-```
 
 ## Troubleshooting
 
@@ -177,9 +158,9 @@ apptainer pull r_eval.sif docker://devjune26/r_eval:1.0
 ## Citation
 
 If you use this pipeline, please cite:
-- **Demuxalot**: Heaton et al. (2020)
-- **FreeBayes**: Garrison & Marth (2012)
-- **Seurat**: Hao et al. (2021)
+- **Demuxalot**: Rogozhnikov, A., Ramkumar, P., Shah, K., Bedi, R., Kato, S., & Escola, G. S. *Demuxalot: scaled up genetic demultiplexing for single-cell sequencing*. bioRxiv (2021). https://doi.org/10.1101/2021.05.22.443646
+
+- **FreeBayes**: Garrison E, Marth G. Haplotype-based variant detection from short-read sequencing. arXiv preprint arXiv:1207.3907 [q-bio.GN] 2012. https://arxiv.org/abs/1207.3907 
 
 ## Contact
 	

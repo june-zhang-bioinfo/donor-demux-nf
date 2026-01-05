@@ -1,13 +1,14 @@
 process DEMUXALOT {
-    container '/PHShome/zz005/docker/donor_demux.sif'
-    publishDir "${params.demux_outdir}/${run_name}", mode: 'copy'
+    tag "${run_name}"
+    publishDir "${params.demux_outdir}", mode: 'copy', pattern: "*.csv"
 
     input:
-    tuple val(run_name), path(filtered_vcf), val(sample_names), val(sexes), path(tenx_bam)
+    tuple val(run_name), path(filtered_vcf), val(sample_names), val(sexes), path(tenx_bam), path(barcodes), path(matrix_file)
     path demuxalot_script
 
     output:
-    tuple val(run_name), val(filtered_vcf), val(sample_names), val(sexes), path(tenx_bam), path("*.csv"), emit: demuxalot_out
+    // Pass the matrix_file to the output tuple so Seurat can use it
+    tuple val(run_name), path(filtered_vcf), val(sample_names), val(sexes), path(tenx_bam), path("*.csv"), path(matrix_file), emit: demuxalot_out
 
     script:
     def samples_list_string = sample_names.join(',')
@@ -19,50 +20,38 @@ process DEMUXALOT {
         --run_name "${run_name}" \
         --vcf_file "${filtered_vcf}" \
         --bam_file "${tenx_bam}" \
+        --barcode_file "${barcodes}" \
         --sample_names "${samples_list_string}"
     """
 }
 
 process R_SEURAT_ANALYSIS {
-    container 'r_eval:1.0'
-    publishDir "${params.demux_outdir}/${run_name}", mode: 'copy'
+    tag "${run_name}"
 
     input:
-    tuple val(run_name), val(filtered_vcf), val(sample_names), val(sexes), path(tenx_bam), path(demux_results)
+    // matrix_file is now staged directly in the work directory
+    tuple val(run_name), path(filtered_vcf), val(sample_names), val(sexes), path(tenx_bam), path(demux_results), path(matrix_file)
     path seurat_script
 
     output:
-    path "${run_name}_PCA_plots.pdf", emit: pca_pdf
-    path "${run_name}_SexGene_plots.pdf", emit: sex_gene_pdf
+    path "PCA_plots.pdf", emit: pca_pdf
+    path "SexGene_plots.pdf", emit: sex_gene_pdf
 
     script:
-    def matrix_dir = tenx_bam.parent.parent
-    def rds_files = file("${matrix_dir}/*.rds")
-    def rds_file = rds_files.size() > 0 ? rds_files[0] : null
-    
-    def h5_path = "${matrix_dir}/filtered_feature_bc_matrix.h5"
-    def h5_file = (!rds_file && file(h5_path).exists()) ? file(h5_path) : null
-    
-    def demux_csv = demux_results.find { it.name.endsWith('_posteriors.csv') }
+    def demux_csv = demux_results.find { it.name.endsWith('_likelihoods.csv') }
     def sex_list = sexes.collect{ "'$it'" }.join(',')
     def sample_list = sample_names.collect{ "'$it'" }.join(',')
     
-    def r_cmd = ["Rscript ${seurat_script}",
-                 "--run_name '${run_name}'",
-                 "--demux_csv '${demux_csv}'",
-                 "--sample_names '${sample_list}'",
-                 "--sexes '${sex_list}'"]
-    
-    if (rds_file) {
-        r_cmd << "--rds '${rds_file}'"
-    } else if (h5_file) {
-        r_cmd << "--matrix_h5 '${h5_file}'"
-    } else {
-        error "No RDS or H5 file found in ${matrix_dir}"
-    }
+    // Determine flag based on actual staged file extension
+    def matrix_flag = matrix_file.name.endsWith('.h5') ? "--matrix_h5" : "--rds"
     
     """
-    ${r_cmd.join(' ')}
+    Rscript ${seurat_script} \
+        --run_name "${run_name}" \
+        --demux_csv "${demux_csv}" \
+        ${matrix_flag} "${matrix_file}" \
+        --sample_names "${sample_list}" \
+        --sexes "${sex_list}"
     """
 }
 
@@ -83,5 +72,4 @@ workflow SUBWF_DEMUX_ANALYSIS {
             seurat_script
         )
     
-    // NO EMIT BLOCK HERE - Remove it completely!
 }
