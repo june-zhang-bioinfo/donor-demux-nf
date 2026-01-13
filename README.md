@@ -57,16 +57,16 @@ singularity pull r_eval.sif docker://devjune26/r_eval:1.0
 ## Input Files
 
 ### Full Pipeline Mode
-1. **Run Info CSV** (`params.runs_csv`): Metadata for donor BAM files
+1. **Run Info CSV** (`runs_csv`): Metadata for donor BAM files. The example runs_csv can be found in https://github.com/june-zhang-bioinfo/donor-demux-nf/tree/main/data
    ```csv
    run_name,bam_file,ID,LB,PL,PU,SM,sex
    A1,/path/to/patient1.bam,P1_ID,P1_LIB,ILLUMINA,P1_UNIT,P1,Male
    A1,/path/to/patient2.bam,P2_ID,P2_LIB,ILLUMINA,P2_UNIT,P2,Female
    ```
 
-2. **Reference Genome** (`params.reference`): FASTA file (e.g., GRCh38)
+2. **Reference Genome** (`reference`): FASTA file (e.g., GRCh38)
 
-3. **10x Data Directory** (`params.tenx_dir`): Structure:
+3. **10x Data Directory** (`tenx_dir`): Structure:
    ```
    run_name_1/
    ├── possorted_genome_bam.bam  
@@ -98,7 +98,7 @@ nextflow run main.nf \
   --demux_outdir results/demuxalot
 ```
 
-### Demo Mode (skip VCF preparation)
+### Use pre-existing VCFs
 ```bash
 nextflow run main.nf \
     -profile hpc \
@@ -137,16 +137,18 @@ results/demuxalot/
 ```
 
 
-## Troubleshooting
+## Tips and troubleshooting
 
-### Common Issues
+1. **Reuse vcf files**
+   - If multiple experiments share the same donors, use the full pipeline first and get the `filtered.vcf`.
+   - Use the `filtered.vcf` in vcf-skipping mode for other experiments.
 
-1. **"Run info CSV file not found"**
-   - Ensure `params.runs_csv` points to a valid file
-   - Or use `--skip_vcf_prep` for demo mode
-
-2. **"BAM file not indexed"**
-   - Pipeline automatically indexes BAM files if needed
+2. **Clouds are not separated well in PC plots**
+   - Check the number of SNPs in `filtered.vcf`.
+  ```bash
+  bcftools view -v snps filtered.vcf | wc -l
+  ```
+  - Consider to get better donor SNPs if it's below 100.
 
 3. **"No RDS or H5 file found"**
    - Ensure 10x data directory contains either `.rds` or `filtered_feature_bc_matrix.h5`

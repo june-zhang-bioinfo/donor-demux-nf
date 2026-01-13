@@ -1,0 +1,5 @@
+﻿run_name,bam_file,ID,LB,PL,PU,SM,sex
+B1,/data/zzhang51/ICI/SNP/B1_B2/Plate11_BR-3163-P7_BR-941-P7_BR-926-P2-P6_SNP_combined_H08_qc.bam,21-220,21-220,21-220,21-220,21-220,Male
+B1,/data/zzhang51/ICI/SNP/B1_B2/Plate11_BR-3163-P7_BR-941-P7_BR-926-P2-P6_SNP_combined_H09_qc.bam,21-220,21-220,21-220,21-220,21-220,Male
+B1,/data/zzhang51/ICI/SNP/B1_B2/Plate11_BR-3163-P7_BR-941-P7_BR-926-P2-P6_SNP_combined_H10_qc.bam,22-078,22-078,22-078,22-078,22-078,Female
+B1,/data/zzhang51/ICI/SNP/B1_B2/Plate11_BR-3163-P7_BR-941-P7_BR-926-P2-P6_SNP_combined_H11_qc.bam,22-078,22-078,22-078,22-078,22-078,Female
